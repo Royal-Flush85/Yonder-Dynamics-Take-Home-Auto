@@ -107,7 +107,9 @@ class Grid:
         The result may lie outside the grid; callers use in_bounds().
         """
         # TODO: implement
-        raise NotImplementedError("Grid.world_to_cell")
+        col = math.floor((x - self.origin_x) / self.resolution)
+        row = math.floor((y - self.origin_y) / self.resolution)
+        return row, col
 
     def cell_to_world(self, row: int, col: int) -> Point:
         """
@@ -117,7 +119,10 @@ class Grid:
         search returns into something the rover can drive to.
         """
         # TODO: implement
-        raise NotImplementedError("Grid.cell_to_world")
+        return (
+            self.origin_x + (col + 0.5) * self.resolution,
+            self.origin_y + (row + 0.5) * self.resolution
+        )
 
 
 def path_length_m(points_xy: Sequence[Point]) -> float:
@@ -146,4 +151,17 @@ def inflate(grid: Grid, radius_m: float) -> Grid:
         for radius >= one cell.
     """
     # TODO: implement
-    raise NotImplementedError("inflate")
+    out = grid.copy()
+    k = math.ceil(radius_m / grid.resolution)
+
+    for row in range(grid.height):
+        for col in range(grid.width):
+            if grid.is_occupied(row, col):
+                for dr in range(-k, k + 1):
+                    for dc in range(-k, k + 1):
+                        r = row + dr
+                        c = col + dc
+                        if grid.in_bounds(r, c):
+                            out.occupancy[out.index(r, c)] = OCCUPIED
+
+    return out
