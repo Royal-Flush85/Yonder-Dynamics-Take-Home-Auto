@@ -15,6 +15,9 @@ Movement rules (fixed, so the tests can check them)
 """
 
 from typing import List, Optional
+import heapq
+import math
+from sim.grid_values import UNKNOWN
 
 from grid_utils import Grid, Cell
 
@@ -31,7 +34,11 @@ def heuristic(a: Cell, b: Cell) -> float:
     fail it on an 8-connected grid.
     """
     # TODO: implement
-    raise NotImplementedError("heuristic")
+    dr = abs(a[0] - b[0])
+    dc = abs(a[1] - b[1])
+    return max(dr, dc) + (2**0.5 - 1) * min(dr, dc)
+    # minimum difference for number of diagonals
+    return 
 
 
 def astar(grid: Grid, start: Cell, goal: Cell, unknown_is_free: bool = False) -> Optional[List[Cell]]:
@@ -58,4 +65,84 @@ def astar(grid: Grid, start: Cell, goal: Cell, unknown_is_free: bool = False) ->
         structure makes "give me the cheapest open node" fast?
     """
     # TODO: implement
-    raise NotImplementedError("astar")
+    if start[0] < 0 or start[0] >= grid.height or start[1] < 0 or start[1] >= grid.width:
+        return None
+    if goal[0] < 0 or goal[0] >= grid.height or goal[1] < 0 or goal[1] >= grid.width:
+        return None
+    if start == goal:
+        return [start]
+
+    if grid.is_occupied(goal[0], goal[1]):
+        return None
+
+    if not unknown_is_free and grid.get(*goal) == UNKNOWN:
+        return None
+    g_score = {start: 0.0}
+    came_from = {}
+
+    open_set = [(heuristic(start, goal), 0.0, start)]
+
+    directions = [
+        (-1, -1), (-1, 0), (-1, 1),
+        (0, -1),           (0, 1),
+        (1, -1),  (1, 0),  (1, 1)
+    ]
+    
+
+    while open_set:
+        current_f, current_g, current = heapq.heappop(open_set)
+
+        if current_g > g_score[current]:
+            continue
+
+        if current == goal:
+            path = []
+
+            while current in came_from:
+                path.append(current)
+                current = came_from[current]
+
+            path.append(start)
+            return path[::-1]
+
+        for dr, dc in directions:
+            nr = current[0] + dr
+            nc = current[1] + dc
+            neighbor = (nr, nc)
+
+            if not (0 <= nr < grid.height and 0 <= nc < grid.width):
+                continue
+
+            if grid.is_occupied(neighbor[0], neighbor[1]):
+                continue
+
+            if not unknown_is_free and grid.get(*neighbor) == UNKNOWN:
+                continue
+
+            if dr != 0 and dc != 0:
+              side_a = (current[0] + dr, current[1])
+              side_b = (current[0], current[1] + dc)
+
+              if grid.is_occupied(*side_a) or grid.is_occupied(*side_b):
+                  continue
+
+              if not unknown_is_free:
+                  if grid.get(*side_a) == UNKNOWN or grid.get(*side_b) == UNKNOWN:
+                      continue
+
+            step_cost = math.sqrt(2) if dr != 0 and dc != 0 else 1.0
+
+            tentative_g_score = g_score[current] + step_cost
+
+            if tentative_g_score < g_score.get(neighbor, float("inf")):
+                came_from[neighbor] = current
+                g_score[neighbor] = tentative_g_score
+
+                f_score = tentative_g_score + heuristic(neighbor, goal)
+
+                heapq.heappush(
+                    open_set,
+                    (f_score, tentative_g_score, neighbor)
+                )
+
+    return None
