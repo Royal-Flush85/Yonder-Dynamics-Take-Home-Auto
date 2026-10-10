@@ -77,7 +77,17 @@ class PlannerNode(Node):
         # ------------------------------------------------------------------
         # TODO: Create a publisher for /planned_path (message type: Path).
         #
-        # self.path_pub = self.create_publisher(Path, "/planned_path", 10)
+        self.grid_sub = self.create_subscription(
+            GridSnapshot,
+            "/grid_feed",
+            self.on_grid,
+            QoSProfile(
+                depth=1,
+                reliability=ReliabilityPolicy.BEST_EFFORT,
+                durability=DurabilityPolicy.VOLATILE,
+            ),
+        )
+        self.path_pub = self.create_publisher(Path, "/planned_path", 10)
 
         # ------------------------------------------------------------------
         # State — add whatever you need
@@ -108,7 +118,18 @@ class PlannerNode(Node):
         and not otherwise. The scoreboard tells you how you did.
         """
         # TODO: implement
-        raise NotImplementedError("PlannerNode.on_grid")
+        grid = Grid.from_msg(msg)
+        safe_grid = inflate(grid, msg.robot_radius_m)
+
+        rover_xy = (msg.rover_x, msg.rover_y)
+        goal_xy = (msg.goal_x, msg.goal_y)
+
+        if self.path_xy is None:
+            self.path_xy = self.plan(safe_grid, rover_xy, goal_xy)
+            self.publish_path(self.path_xy, msg.header.stamp)
+
+            if self.path_xy:
+                self.plan_count += 1
 
     def needs_replan(self, grid: Grid, rover_xy) -> tuple:
         """
@@ -137,7 +158,14 @@ class PlannerNode(Node):
         Convert world -> cell, call astar, convert the cells back to world points.
         """
         # TODO: implement
-        raise NotImplementedError("PlannerNode.plan")
+        start_cell = grid.world_to_cell(*rover_xy)
+        goal_cell = grid.world_to_cell(*goal_xy)
+
+        path_cells = astar(grid, start_cell, goal_cell, unknown_is_free=True)
+        if path_cells is None:
+            return []
+        path_xy = [grid.cell_to_world(*cell) for cell in path_cells]
+        return path_xy
 
     def publish_path(self, points_xy, stamp: float) -> None:
         """Publish a list of (x, y) world points as nav_msgs/Path. (provided)"""
@@ -161,4 +189,5 @@ class PlannerNode(Node):
         much faster than real time, so time.time() would give nonsense here.
         """
         # TODO: implement
-        raise NotImplementedError("PlannerNode.print_status")
+        raise NotImpl
+        ementedError("PlannerNode.print_status")
