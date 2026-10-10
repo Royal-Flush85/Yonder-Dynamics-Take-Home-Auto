@@ -373,16 +373,176 @@ I predict that the rover will need to replan approximately 2 times in the boulde
 
 However, the actual number may depend on the positions of the obstacles and whether the newly detected obstacles intersect the planned path. The planner should not replan when new obstacles are detected outside the remaining path.
 
-- **Prediction.** Before running `boulders`: how many replans did you expect, and why? What did you get?
-- **Heuristic.** Which one, and why is it safe for an 8-connected grid? What goes wrong with one that overestimates? (Try it. What did you see?)
-- **Replan trigger.** Exactly what makes you replan? What deliberately does *not*? Paste your `python sim/launch.py --all` table.
-- **Unknown cells.** How does your planner treat them, and why? What happens on the very first tick under the other choice?
-- **Rover size.** How do you account for it? What happens to the run if you don't?
-- **No route.** What do you publish when there is no path, and what would go wrong if you published nothing?
-- **Time.** Which clock does your monitoring output use, and why?
-- **Ambiguity.** What did the task leave underspecified, and what call did you make?
-- **Testing.** What did you check beyond the provided tests? Which scenario or picture revealed a bug of yours?
-- **Stretch goals.** Which did you attempt, and how far did you get? (For Part 2A: what changed between your Part 1 planner and your final one, in numbers?)
+### Heuristic
+
+I use octile distance. For row and column differences dr and dc,
+the estimate is:
+
+sqrt(2) × min(dr, dc) + abs(dr - dc)
+
+On an empty 8-connected grid, the shortest route uses diagonal
+moves for the smaller difference and straight moves for the
+remainder. Obstacles and corner restrictions can only increase
+the required cost, so this estimate never overestimates it.
+
+An overestimating heuristic can cause A* to return a longer route.
+For example, Manhattan distance estimates a single diagonal move
+as 2, although its actual cost is sqrt(2). My heuristic passed all
+three provided heuristic tests, and the search passed the provided
+optimality tests.
+
+I have not yet run the requested comparison with an overestimating
+heuristic, so I do not claim an experimental result for that case.
+
+### Replan trigger
+
+I plan when there is no previous plan, retry when the previous
+search found no route, and replan when a checked waypoint on the
+remaining path is occupied or outside the current inflated grid.
+
+I use the closest waypoint as the starting index for validation.
+Changes outside the checked part of the path do not trigger a
+replan. A valid path is retained rather than replaced simply
+because new information might allow a shorter route.
+
+The current no-route implementation retries each tick. Avoiding
+repeated searches when the effective map has not changed is a
+future improvement.
+
+Results from `python sim/launch.py --all`:
+
+```text
+scenario      result           ticks  blocked  plans  replans  needless
+-----------------------------------------------------------------------
+open          REACHED            121        0      1        0         0
+boulders      REACHED            127        0      9        8         0
+wall          REACHED            137        0     15       14         0
+popup         REACHED            129        0      3        2         0
+goal-blocked  REACHED            167        0      4        2         0
+random 1      REACHED            140        0     13       12         0
+random 2      REACHED            133        0     11       10         0
+random 3      REACHED            139        0     11       10         0
+```
+
+Every run reached the goal with zero blocked ticks and zero
+needless replans.
+
+### Unknown cells
+
+The planner treats unknown cells as traversable. The goal starts
+outside the rover's sensor range, so an initial route must extend
+through unseen space.
+
+If unknown cells were blocked, the first search would find no
+route to the unseen goal. The rover would remain stationary
+rather than moving to discover more of the map. This is a
+consequence of the planning policy; I have not recorded a separate
+simulation run of that alternative.
+
+### Rover size
+
+I inflate occupied cells in a copy of the grid using a square
+neighbourhood. Its radius in cells is:
+
+ceil(robot_radius_m / grid.resolution)
+
+With the supplied 0.5 m radius and 0.5 m resolution, this expands
+obstacles by one cell in each direction. A* also prohibits diagonal
+corner cutting.
+
+I separately mark cells unsafe when their centres are too close
+to the arena boundary, because the outer wall is not marked
+occupied in the feed.
+
+Without this handling, a route safe for a point could bring the
+rover's body too close to an obstacle or wall and cause an
+emergency stop. I have not yet measured a run with inflation
+disabled.
+
+### No route
+
+I publish an empty Path when no route exists. This tells the
+rover to stop. Publishing nothing would leave it following its
+previous route, which may now be unsafe.
+
+In goal-blocked, the planner stopped at tick 104 (20.8 simulated
+seconds) and recovered at tick 144 (28.8 seconds). It reached
+the goal at tick 167 with zero blocked ticks.
+
+Stops and recoveries are counted separately from nonempty path
+replacements, matching the scoreboard.
+
+### Time
+
+Monitoring uses `msg.header.stamp`, the simulated clock.
+It reports stored path length, replan count, and time since the
+last replan approximately once per simulated second.
+
+Wall-clock time would depend on how quickly the computer runs
+the simulator and would not represent elapsed rover time.
+Before the first replan, the elapsed value is displayed as n/a.
+
+### Ambiguity and limitations
+
+I chose square inflation because the task permits either square
+or circular neighbourhoods. It provides a conservative margin
+but can reject narrow passages.
+
+I chose optimistic traversal of unknown cells so the rover can
+make progress before the whole route is observed.
+
+The current validity helper checks waypoints, not the complete
+segments between them. This passed the supplied scenarios, but
+could miss a newly blocked diagonal side cell or an obstacle
+between more widely spaced waypoints.
+
+Using the closest waypoint is also an approximation of progress:
+a waypoint slightly behind the rover may still be checked, or
+part of the current segment may be omitted. Segment-based
+validation would be a useful improvement.
+
+### Testing
+
+All 49 provided unit tests passed. These include coordinate
+conversion, inflation, A* optimality and performance, corner
+cutting, and replan-helper behaviour.
+
+Beyond the supplied tests, I ran additional random worlds:
+
+| Seed | Result | Ticks | Blocked ticks | Replans | Needless replans |
+|------|--------|-------|---------------|---------|------------------|
+| 7    | REACHED | 141 | 0 | 8 | 0 |
+| 19   | REACHED | 134 | 0 | 5 | 0 |
+| 42   | REACHED | 130 | 0 | 7 | 0 |
+
+During integration, the open scenario exposed a leftover
+`NotImplementedError` in `on_grid`. Removing that starter line
+allowed the planner to run and reach the goal.
+
+A separate command-entry mistake prevented the first seed-7
+attempt from running. I corrected the command and verified the
+successful run before recording its results.
+
+Additional unit tests and visual inspection have not yet been
+documented here.
+I generated and inspected boulders.png using --save-png.
+The rover's trail went around the visible obstacles and ended
+near the goal. Replan markers clustered near obstacles, consistent
+with additional obstacle cells becoming visible as the rover moved.
+The run summary reported zero blocked ticks.
+![Boulders run showing the rover trail and replan markers](boulders.png)
+
+
+### Stretch goals
+
+I focused on the required clean-sensor implementation.
+I have not implemented confidence-based planning, soft costs,
+Theta*, or Webots integration.
+
+The planner currently ignores confidence. A future noisy-sensor
+implementation would need to reduce reactions to phantom
+obstacles while retaining evidence of real obstacles during
+confidence decay and sensor dropouts.
 
 ---
 
