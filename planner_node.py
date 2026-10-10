@@ -31,6 +31,10 @@ import rclpy_lite as rclpy
 from rclpy_lite.node import Node
 from rclpy_lite.qos import QoSProfile, ReliabilityPolicy, DurabilityPolicy
 
+
+from geometry_msgs.msg import PoseStamped
+from nav_msgs.msg import Path
+
 # Message types provided by the simulator
 from sim.messages import GridSnapshot, make_path_msg
 
@@ -124,12 +128,31 @@ class PlannerNode(Node):
         rover_xy = (msg.rover_x, msg.rover_y)
         goal_xy = (msg.goal_x, msg.goal_y)
 
-        if self.path_xy is None:
-            self.path_xy = self.plan(safe_grid, rover_xy, goal_xy)
-            self.publish_path(self.path_xy, msg.header.stamp)
+        should_plan, reason = self.needs_replan(safe_grid, rover_xy)
+        if should_plan:
+            had_path = bool(self.path_xy)
+            new_path = self.plan(safe_grid, rover_xy, goal_xy)
+            
+            if had_path and new_path:
+                self.replan_count += 1
+                self.last_replan_stamp = msg.header.stamp
 
-            if self.path_xy:
+            self.path_xy = new_path
+            if new_path:
                 self.plan_count += 1
+
+            path_msg = Path()
+            path_msg.header = msg.header
+
+            for x, y in new_path:
+                pose = PoseStamped()
+                pose.header = msg.header
+                pose.pose.position.x = float(x)
+                pose.pose.position.y = float(y)
+                pose.pose.orientation.w = 1.0
+                path_msg.poses.append(pose)
+
+            self.path_pub.publish(path_msg)
 
     def needs_replan(self, grid: Grid, rover_xy) -> tuple:
         """
@@ -148,7 +171,15 @@ class PlannerNode(Node):
         output and makes debugging a hundred times easier.
         """
         # TODO: implement
-        raise NotImplementedError("PlannerNode.needs_replan")
+        if self.path_xy is None:
+            return True, "no plan yet"
+        if self.path_xy is not None and len(self.path_xy) == 0:
+            return True, "last plan found no route"
+
+        closest_index = next_waypoint_index(self.path_xy, rover_xy)
+        if not path_is_valid(grid, self.path_xy, closest_index):
+            return True, "path blocked ahead"
+        return False, "path still valid"
 
     def plan(self, grid: Grid, rover_xy, goal_xy):
         """

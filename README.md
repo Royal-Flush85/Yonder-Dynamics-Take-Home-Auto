@@ -229,6 +229,7 @@ Each step has a check that tells you it's right before you move on, and ends wit
 | 8 | `--all`, then some `--scenario random --seed N` you haven't tried. | Every row reaches the goal. | `step 8: random seeds` |
 | 9 | Write your write-up (in this README), finish `METHODOLOGY.md` and `AI_LOG.md`. | Every question in the write-up has an answer with numbers from your own runs. | `step 9: write-up, methodology and AI log` |
 
+
 Use `--visualize` (or `--save-png`) constantly. You will learn more from watching one replan happen than from re-reading your code.
 
 **Predict, then run.** Before you first run `boulders`, write down (in your README write-up) how many replans you expect and why, and **commit that prediction on its own** (`prediction: boulders`) before you run it. After the run, compare. If the number surprises you, that surprise is the interesting part.
@@ -364,7 +365,13 @@ We don't expect a perfect implementation. Those who show genuine effort and lear
 
 ## Your write-up
 
-*Candidates: replace this section with your own short write-up. Keep it to what a teammate would need to trust your implementation. Numbers from your own runs beat adjectives.*
+Prediction — Boulders Scenario
+
+Expected replans: 2
+
+I predict that the rover will need to replan approximately 2 times in the boulders scenario. Since my A* implementation treats unknown cells as free, the initial path may pass through obstacles that the rover has not detected yet. As the rover moves and new obstacles enter its sensor range, the occupancy grid will update. If an obstacle blocks the remaining path, the planner should generate a new route around it. I expect around 2 replans because the rover may encounter multiple obstacles while traveling toward the goal.
+
+However, the actual number may depend on the positions of the obstacles and whether the newly detected obstacles intersect the planned path. The planner should not replan when new obstacles are detected outside the remaining path.
 
 - **Prediction.** Before running `boulders`: how many replans did you expect, and why? What did you get?
 - **Heuristic.** Which one, and why is it safe for an 8-connected grid? What goes wrong with one that overestimates? (Try it. What did you see?)
