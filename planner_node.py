@@ -31,6 +31,7 @@ import rclpy_lite as rclpy
 from rclpy_lite.node import Node
 from rclpy_lite.qos import QoSProfile, ReliabilityPolicy, DurabilityPolicy
 
+from sim.grid_values import OCCUPIED
 
 from geometry_msgs.msg import PoseStamped
 from nav_msgs.msg import Path
@@ -81,6 +82,8 @@ class PlannerNode(Node):
         # ------------------------------------------------------------------
         # TODO: Create a publisher for /planned_path (message type: Path).
         #
+        self.last_status_stamp = None
+
         self.grid_sub = self.create_subscription(
             GridSnapshot,
             "/grid_feed",
@@ -124,6 +127,16 @@ class PlannerNode(Node):
         # TODO: implement
         grid = Grid.from_msg(msg)
         safe_grid = inflate(grid, msg.robot_radius_m)
+        for row in range(safe_grid.height):
+            for col in range(safe_grid.width):
+                clearance = min(
+                    row + 0.5,
+                    col + 0.5,
+                    safe_grid.height - row - 0.5,
+                    safe_grid.width - col - 0.5,
+                ) * safe_grid.resolution
+                if clearance <= msg.robot_radius_m:
+                    safe_grid.occupancy[safe_grid.index(row, col)] = OCCUPIED
 
         rover_xy = (msg.rover_x, msg.rover_y)
         goal_xy = (msg.goal_x, msg.goal_y)
@@ -153,6 +166,8 @@ class PlannerNode(Node):
                 path_msg.poses.append(pose)
 
             self.path_pub.publish(path_msg)
+
+        self.print_status(msg.header.stamp)
 
     def needs_replan(self, grid: Grid, rover_xy) -> tuple:
         """
@@ -220,5 +235,23 @@ class PlannerNode(Node):
         much faster than real time, so time.time() would give nonsense here.
         """
         # TODO: implement
-        raise NotImpl
-        ementedError("PlannerNode.print_status")
+        if self.last_status_stamp is not None:
+            if stamp - self.last_status_stamp < 1.0:
+                return
+
+        length = path_length_m(self.path_xy or [])
+        if self.last_replan_stamp is None:
+            since_replan = "n/a"
+        else:
+            elapsed = stamp - self.last_replan_stamp
+            since_replan = f"{elapsed:.1f}s"
+
+        print(
+            f"t={stamp:.1f}s "
+            f"path={length:.1f}m "
+            f"replans={self.replan_count} "
+            f"since_replan={since_replan}"
+        )
+
+
+        self.last_status_stamp = stamp
